@@ -95,7 +95,9 @@ def train(
     with torch.no_grad():
         # initialise the cluster centers
         model.state_dict()["assignment.cluster_centers"].copy_(cluster_centers)
-    loss_function = nn.KLDivLoss(size_average=False)
+
+    loss_function = nn.KLDivLoss(reduction="sum")
+    #loss_function = nn.KLDivLoss(size_average=False)
     delta_label = None
     for epoch in range(epochs):
         features = []

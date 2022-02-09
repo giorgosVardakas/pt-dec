@@ -25,3 +25,14 @@ MANIFEST
 
 # Jupyter Notebook
 .ipynb_checkpoints
+
+# Files
+examples/my-experiments/datasets/10x_73k
+examples/my-experiments/datasets/Australian
+examples/my-experiments/datasets/FashionMNIST
+examples/my-experiments/datasets/FashionMNIST_5
+examples/my-experiments/datasets/MNIST
+examples/my-experiments/datasets/Pendigits
+examples/my-experiments/datasets/Wine
+examples/my-experiments/datasets/Synthetic
+
