@@ -2,12 +2,12 @@ import click
 import numpy as np
 import seaborn as sns
 from sklearn.metrics import confusion_matrix
-from torch.optim import SGD
+from torch.optim import SGD, Adam
 from torch.optim.lr_scheduler import StepLR
 import torch
 from torch.utils.data import Dataset
 from torchvision import transforms
-from torchvision.datasets import MNIST
+from torchvision.datasets import FashionMNIST
 from tensorboardX import SummaryWriter
 import uuid
 
@@ -16,23 +16,48 @@ from ptdec.model import train, predict
 from ptsdae.sdae import StackedDenoisingAutoEncoder
 import ptsdae.model as ae
 from ptdec.utils import cluster_accuracy
-from sklearn.metrics.cluster import normalized_mutual_info_score
+from sklearn.metrics import accuracy_score
+from sklearn.metrics.cluster import normalized_mutual_info_score, adjusted_rand_score
+from datasets.datasets import get_olivetti_faces_dataset
 import pdb
 
-class CachedMNIST(Dataset):
-	def __init__(self, train, cuda, testing_mode=False):
-		img_transform = transforms.Compose([transforms.Lambda(self._transformation)])
-		self.ds = MNIST("./datasets/MNIST", download=True, train=train, transform=img_transform)
+def transform_clusters_to_labels(labels, clusters):
+	"""
+	Transforms clusters assigments to ground truth categories based on a greedy
+	approach. Every cluster is transposed to the most frequent ground truth label.
+	"""
+	predicted_labels = list()
+
+	# Find the cluster ids (labels)
+	c_ids = np.unique(clusters)
+	labels = labels
+
+	# Dictionary to transform cluster label to real label
+	dict_clusters_to_labels = dict()
+
+	# For every cluster find the most frequent data label
+	for c_id in c_ids:
+		indexes_of_cluster_i = np.where(c_id == clusters)
+		elements, frequency = np.unique(labels[indexes_of_cluster_i], return_counts=True)
+		true_label_index = np.argmax(frequency)
+		true_label = elements[true_label_index]
+		dict_clusters_to_labels[c_id] = true_label
+
+	# Change the cluster labels to real labels
+	for i, element in enumerate(clusters):
+		cluster_of_element_i = dict_clusters_to_labels[element]
+		predicted_labels.append(cluster_of_element_i)
+
+	return np.array(predicted_labels)
+
+class Olivetti(Dataset):
+	def __init__(self, cuda, batch_size, testing_mode=False):
+		self.ds, self.data_shape = get_olivetti_faces_dataset(batch_size)
 		self.cuda = cuda
 		self.testing_mode = testing_mode
 		self._cache = dict()
 
-	@staticmethod
-	def _transformation(img):
-		return (torch.ByteTensor(torch.ByteStorage.from_buffer(img.tobytes())).float() * 0.02)
-
 	def __getitem__(self, index: int) -> torch.Tensor:
-		#pdb.set_trace()
 		if index not in self._cache:
 			self._cache[index] = list(self.ds[index])
 			if self.cuda:
@@ -48,20 +73,20 @@ class CachedMNIST(Dataset):
 
 @click.option("--cuda", help="whether to use CUDA (default True).", type=bool, default=True)
 
-@click.option("--batch-size", help="training batch size (default 256).", type=int, default=256)
+@click.option("--batch-size", help="training batch size (default 256).", type=int, default=512)
 
 @click.option(
 	"--pretrain-epochs",
 	help="number of pretraining epochs (default 300).",
 	type=int,
-	default=300,
+	default=200,
 )
 
 @click.option(
 	"--finetune-epochs",
 	help="number of finetune epochs (default 500).",
 	type=int,
-	default=500,
+	default=300,
 )
 
 @click.option(
@@ -72,16 +97,20 @@ class CachedMNIST(Dataset):
 )
 
 def main(cuda, batch_size, pretrain_epochs, finetune_epochs, testing_mode):
+	batch_size = 100
 	writer = SummaryWriter()  # create the TensorBoard object
 	# callback function to call during training, uses writer from the scope
 
 	def training_callback(epoch, lr, loss, validation_loss):
 		writer.add_scalars(	"data/autoencoder",	{"lr": lr, "loss": loss, "validation_loss": validation_loss,}, epoch,)
 
-	ds_train = CachedMNIST(train=True, cuda=cuda, testing_mode=testing_mode)  # training dataset
-	ds_val = CachedMNIST(train=False, cuda=cuda, testing_mode=testing_mode)  # evaluation dataset
+	ds_train = Olivetti(cuda=cuda, batch_size=batch_size, testing_mode=testing_mode)  # training dataset
 
-	autoencoder = StackedDenoisingAutoEncoder([28 * 28, 500, 500, 2000, 10], final_activation=None)
+	latent_dim = 10
+	cluster_number = 40
+	data_shape = ds_train.data_shape
+	# Bigger Network Destroys the clustering results!
+	autoencoder = StackedDenoisingAutoEncoder([data_shape, latent_dim], final_activation=None)
 	
 	if cuda:
 		autoencoder.cuda()
@@ -91,53 +120,57 @@ def main(cuda, batch_size, pretrain_epochs, finetune_epochs, testing_mode):
 		ds_train,
 		autoencoder,
 		cuda=cuda,
-		validation=ds_val,
+		validation=None,
 		epochs=pretrain_epochs,
 		batch_size=batch_size,
-		optimizer=lambda model: SGD(model.parameters(), lr=0.1, momentum=0.9),
+		optimizer=lambda model: Adam(model.parameters(), lr=0.01),
 		scheduler=lambda x: StepLR(x, 100, gamma=0.1),
-		corruption=0.2,
+		corruption=None,
 	)
 
 	print("Training stage.")
-	ae_optimizer = SGD(params=autoencoder.parameters(), lr=0.1, momentum=0.9)
+	ae_optimizer = Adam(params=autoencoder.parameters(), lr=0.01)
 	ae.train(
 		ds_train,
 		autoencoder,
 		cuda=cuda,
-		validation=ds_val,
+		validation=None,
 		epochs=finetune_epochs,
 		batch_size=batch_size,
 		optimizer=ae_optimizer,
-		scheduler=StepLR(ae_optimizer, 100, gamma=0.1),
-		corruption=0.2,
+		scheduler=StepLR(ae_optimizer, 100, gamma=0.01),
+		corruption=None,
 		update_callback=training_callback,
 	)
 
 	print("DEC stage.")
-	model = DEC(cluster_number=10, hidden_dimension=10, encoder=autoencoder.encoder)
+	model = DEC(cluster_number=cluster_number, hidden_dimension=latent_dim, encoder=autoencoder.encoder)
 	if cuda:
 		model.cuda()
-	dec_optimizer = SGD(model.parameters(), lr=0.01, momentum=0.9)
+	dec_optimizer = Adam(model.parameters(), lr=0.01)
 	train(
 		dataset=ds_train,
 		model=model,
-		epochs=100,
-		batch_size=256,
+		epochs=150,
+		batch_size=40,
 		optimizer=dec_optimizer,
-		stopping_delta=0.000001,
+		stopping_delta=None,
 		cuda=cuda,
 	)
 
 	predicted, actual = predict(
-		ds_train, model, 1024, silent=True, return_actual=True, cuda=cuda
+		ds_train, model, 400, silent=True, return_actual=True, cuda=cuda
 	)
 
 	actual = actual.cpu().numpy()
 	predicted = predicted.cpu().numpy()
 	reassignment, accuracy = cluster_accuracy(actual, predicted)
+	greedy_pred_labels = transform_clusters_to_labels(actual, predicted)
+	purity = accuracy_score(actual, greedy_pred_labels)
 	nmi = normalized_mutual_info_score(actual, predicted)
-	print("Final DEC ACC: {:.2f} NMI: {:.2f}".format(accuracy, nmi))
+	ari = adjusted_rand_score(actual, predicted)
+	print("Final DEC ACC: {:.2f} PURITY: {:.2f} NMI: {:.2f} ARI: {:.2f}".format(accuracy, purity, nmi, ari))
+
 
 	if not testing_mode:
 		predicted_reassigned = [

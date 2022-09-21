@@ -10,7 +10,7 @@ import pandas as pd
 import scipy.sparse
 import scipy.io
 from sklearn.preprocessing import MinMaxScaler, LabelEncoder
-from sklearn.datasets import fetch_20newsgroups, make_circles, make_moons
+from sklearn.datasets import fetch_20newsgroups, make_circles, make_moons, fetch_olivetti_faces
 from sklearn.feature_extraction.text import TfidfVectorizer
 #from datapackage import Package
 import pdb
@@ -176,6 +176,19 @@ def get_synthetic_dataloader(batch_size=64):
 	dataloader = DataLoader(final_dataset, batch_size=batch_size, drop_last=drop_last, shuffle=shuffle)
 
 	return dataloader, data_shape
+
+def get_olivetti_faces_np():
+	data_home = "./datasets/Olivetti-Faces"
+	data, labels = fetch_olivetti_faces(data_home=data_home, return_X_y=True, shuffle=True)
+	return data, labels
+
+def get_olivetti_faces_dataset(batch_size=64):
+	data, labels = get_olivetti_faces_np()
+	data = torch.Tensor(data)
+	data_shape = data.shape[1]
+	labels = torch.Tensor(labels)
+	final_dataset = TensorDataset(data, labels)
+	return final_dataset, data_shape
 
 def get_newsgroups_dataloader(batch_size=64, data_points=-1):
 	#pdb.set_trace()
