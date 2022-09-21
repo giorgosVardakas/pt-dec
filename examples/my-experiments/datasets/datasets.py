@@ -10,7 +10,7 @@ import pandas as pd
 import scipy.sparse
 import scipy.io
 from sklearn.preprocessing import MinMaxScaler, LabelEncoder
-from sklearn.datasets import fetch_20newsgroups, make_circles
+from sklearn.datasets import fetch_20newsgroups, make_circles, make_moons
 from sklearn.feature_extraction.text import TfidfVectorizer
 #from datapackage import Package
 import pdb
@@ -96,6 +96,25 @@ def get_ring_np():
 
 def get_rings_dataset(batch_size=64):
 	data, labels = get_ring_np()
+
+	# Convert to tensor dataset
+	data = torch.Tensor(data)
+	data_shape = data.shape[1]
+	labels = torch.Tensor(labels)
+	final_dataset = TensorDataset(data, labels)
+
+	return final_dataset, data_shape
+
+def get_moons_np():
+	data, labels = make_moons(n_samples=1_000, noise=0.05, random_state=0)
+	scaler = MinMaxScaler()
+	data = scaler.fit_transform(data)
+	data = data.astype("float")
+	labels = labels.astype("int")
+	return data, labels
+
+def get_moons_dataset(batch_size=64):
+	data, labels = get_moons_np()
 
 	# Convert to tensor dataset
 	data = torch.Tensor(data)
@@ -227,6 +246,67 @@ def get_10x_73k_dataset(batch_size=64, data_points=-1):
 	final_dataset = TensorDataset(data, labels)
 	#dataloader = DataLoader(final_dataset, batch_size=batch_size, drop_last=drop_last, shuffle=shuffle)
 
+	return final_dataset, data_shape
+
+def get_dermatology_np():
+	na_column = 33
+	labels_column = 34
+	df = pd.read_csv("./datasets/Dermatology/dermatology.data", delimiter=",", header=None, na_values="?")
+	mean_value = df[na_column].mean()
+	df[na_column].fillna(value=mean_value, inplace=True)
+
+	labels = df[labels_column]
+	data = df.drop(columns=[labels_column])
+	data = np.array(data)
+
+	scaler = MinMaxScaler()
+	data = scaler.fit_transform(data)
+	data = data.astype("float")
+
+	labels = np.array(labels)
+	label_encoder = LabelEncoder()
+	labels = label_encoder.fit_transform(labels)
+	labels = labels.astype("int")
+	total_size = data.shape[0]
+	random_permutation = np.random.permutation(np.arange(total_size))
+	data = data[random_permutation]
+	labels = labels[random_permutation]
+	return data, labels
+
+def get_dermatology_dataset(batch_size=64):
+	data, labels = get_dermatology_np()
+	data = torch.Tensor(data)
+	data_shape = data.shape[1]
+	labels = torch.Tensor(labels)
+	final_dataset = TensorDataset(data, labels)
+	return final_dataset, data_shape
+
+def get_ecoil_np():
+	column_names = ["id", "f1", "f2", "f3", "f4", "f5", "f6", "f7", "label"]
+
+	df = pd.read_csv("./datasets/Ecoli/ecoli.data", delimiter="\s+", header=None, names=column_names)
+	data = df[["f1", "f2", "f3", "f4", "f5", "f6", "f7"]]
+	labels = df["label"]
+
+	data = np.array(data)
+	labels = np.array(labels)
+	label_encoder = LabelEncoder()
+	labels = label_encoder.fit_transform(labels)
+	labels = labels.astype("int")
+
+	total_size = data.shape[0]
+	random_permutation = np.random.permutation(np.arange(total_size))
+	data = data[random_permutation]
+	labels = labels[random_permutation]
+
+	return data, labels
+
+def get_ecoil_dataset(batch_size=64):
+	data, labels = get_ecoil_np()
+	data = torch.Tensor(data)
+	data_shape = data.shape[1]
+	labels = torch.Tensor(labels)
+	final_dataset = TensorDataset(data, labels)
 	return final_dataset, data_shape
 
 def get_MNIST_dataloader(batch_size=64):

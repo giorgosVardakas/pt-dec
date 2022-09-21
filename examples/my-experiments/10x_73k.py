@@ -16,9 +16,39 @@ from ptdec.model import train, predict
 from ptsdae.sdae import StackedDenoisingAutoEncoder
 import ptsdae.model as ae
 from ptdec.utils import cluster_accuracy
-from sklearn.metrics.cluster import normalized_mutual_info_score
+from sklearn.metrics import accuracy_score
+from sklearn.metrics.cluster import normalized_mutual_info_score, adjusted_rand_score
 from datasets.datasets import get_10x_73k_dataset
 import pdb
+
+def transform_clusters_to_labels(labels, clusters):
+	"""
+	Transforms clusters assigments to ground truth categories based on a greedy
+	approach. Every cluster is transposed to the most frequent ground truth label.
+	"""
+	predicted_labels = list()
+
+	# Find the cluster ids (labels)
+	c_ids = np.unique(clusters)
+	labels = labels
+
+	# Dictionary to transform cluster label to real label
+	dict_clusters_to_labels = dict()
+
+	# For every cluster find the most frequent data label
+	for c_id in c_ids:
+		indexes_of_cluster_i = np.where(c_id == clusters)
+		elements, frequency = np.unique(labels[indexes_of_cluster_i], return_counts=True)
+		true_label_index = np.argmax(frequency)
+		true_label = elements[true_label_index]
+		dict_clusters_to_labels[c_id] = true_label
+
+	# Change the cluster labels to real labels
+	for i, element in enumerate(clusters):
+		cluster_of_element_i = dict_clusters_to_labels[element]
+		predicted_labels.append(cluster_of_element_i)
+
+	return np.array(predicted_labels)
 
 class datasets_10x_73k(Dataset):
 	def __init__(self, cuda, batch_size, testing_mode=False):
@@ -43,20 +73,20 @@ class datasets_10x_73k(Dataset):
 
 @click.option("--cuda", help="whether to use CUDA (default True).", type=bool, default=True)
 
-@click.option("--batch-size", help="training batch size (default 256).", type=int, default=512)
+@click.option("--batch-size", help="training batch size (default 256).", type=int, default=256)
 
 @click.option(
 	"--pretrain-epochs",
 	help="number of pretraining epochs (default 300).",
 	type=int,
-	default=200,
+	default=100,
 )
 
 @click.option(
 	"--finetune-epochs",
 	help="number of finetune epochs (default 500).",
 	type=int,
-	default=300,
+	default=50,
 )
 
 @click.option(
@@ -79,7 +109,7 @@ def main(cuda, batch_size, pretrain_epochs, finetune_epochs, testing_mode):
 	cluster_number = 8
 	data_shape = ds_train.data_shape
 	# TODO AutoEncoder
-	autoencoder = StackedDenoisingAutoEncoder([data_shape, 500, 1000, latent_dim], final_activation=None)
+	autoencoder = StackedDenoisingAutoEncoder([data_shape, latent_dim], final_activation=None)
 	
 	if cuda:
 		autoencoder.cuda()
@@ -120,7 +150,7 @@ def main(cuda, batch_size, pretrain_epochs, finetune_epochs, testing_mode):
 	train(
 		dataset=ds_train,
 		model=model,
-		epochs=150,
+		epochs=50,
 		batch_size=256,
 		optimizer=dec_optimizer,
 		stopping_delta=None,
@@ -128,14 +158,17 @@ def main(cuda, batch_size, pretrain_epochs, finetune_epochs, testing_mode):
 	)
 
 	predicted, actual = predict(
-		ds_train, model, 1024, silent=True, return_actual=True, cuda=cuda
+		ds_train, model, 70000, silent=True, return_actual=True, cuda=cuda
 	)
 
 	actual = actual.cpu().numpy()
 	predicted = predicted.cpu().numpy()
 	reassignment, accuracy = cluster_accuracy(actual, predicted)
+	greedy_pred_labels = transform_clusters_to_labels(actual, predicted)
+	purity = accuracy_score(actual, greedy_pred_labels)
 	nmi = normalized_mutual_info_score(actual, predicted)
-	print("Final DEC ACC: {:.2f} NMI: {:.2f}".format(accuracy, nmi))
+	ari = adjusted_rand_score(actual, predicted)
+	print("Final DEC ACC: {:.2f} PURITY: {:.2f} NMI: {:.2f} ARI: {:.2f}".format(accuracy, purity, nmi, ari))
 
 	if not testing_mode:
 		predicted_reassigned = [

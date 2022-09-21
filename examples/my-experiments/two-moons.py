@@ -18,7 +18,7 @@ import ptsdae.model as ae
 from ptdec.utils import cluster_accuracy
 from sklearn.metrics import accuracy_score
 from sklearn.metrics.cluster import normalized_mutual_info_score, adjusted_rand_score
-from datasets.datasets import get_rings_dataset
+from datasets.datasets import get_moons_dataset
 import pdb
 
 def transform_clusters_to_labels(labels, clusters):
@@ -52,7 +52,7 @@ def transform_clusters_to_labels(labels, clusters):
 
 class TwoRings(Dataset):
 	def __init__(self, cuda, batch_size, testing_mode=False):
-		self.ds, self.data_shape = get_rings_dataset(batch_size)
+		self.ds, self.data_shape = get_moons_dataset(batch_size)
 		self.cuda = cuda
 		self.testing_mode = testing_mode
 		self._cache = dict()

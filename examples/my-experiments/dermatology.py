@@ -18,7 +18,7 @@ import ptsdae.model as ae
 from ptdec.utils import cluster_accuracy
 from sklearn.metrics import accuracy_score
 from sklearn.metrics.cluster import normalized_mutual_info_score, adjusted_rand_score
-from datasets.datasets import get_rings_dataset
+from datasets.datasets import get_dermatology_dataset
 import pdb
 
 def transform_clusters_to_labels(labels, clusters):
@@ -50,9 +50,9 @@ def transform_clusters_to_labels(labels, clusters):
 
 	return np.array(predicted_labels)
 
-class TwoRings(Dataset):
+class Dermatology(Dataset):
 	def __init__(self, cuda, batch_size, testing_mode=False):
-		self.ds, self.data_shape = get_rings_dataset(batch_size)
+		self.ds, self.data_shape = get_dermatology_dataset(batch_size)
 		self.cuda = cuda
 		self.testing_mode = testing_mode
 		self._cache = dict()
@@ -73,20 +73,20 @@ class TwoRings(Dataset):
 
 @click.option("--cuda", help="whether to use CUDA (default True).", type=bool, default=True)
 
-@click.option("--batch-size", help="training batch size (default 256).", type=int, default=30)
+@click.option("--batch-size", help="training batch size (default 256).", type=int, default=61)
 
 @click.option(
 	"--pretrain-epochs",
 	help="number of pretraining epochs (default 300).",
 	type=int,
-	default=150,
+	default=200,
 )
 
 @click.option(
 	"--finetune-epochs",
 	help="number of finetune epochs (default 500).",
 	type=int,
-	default=100,
+	default=300,
 )
 
 @click.option(
@@ -97,20 +97,20 @@ class TwoRings(Dataset):
 )
 
 def main(cuda, batch_size, pretrain_epochs, finetune_epochs, testing_mode):
-	batch_size = 100
+	batch_size = 61
 	writer = SummaryWriter()  # create the TensorBoard object
 	# callback function to call during training, uses writer from the scope
 
 	def training_callback(epoch, lr, loss, validation_loss):
 		writer.add_scalars(	"data/autoencoder",	{"lr": lr, "loss": loss, "validation_loss": validation_loss,}, epoch,)
 
-	ds_train = TwoRings(cuda=cuda, batch_size=batch_size, testing_mode=testing_mode)  # training dataset
+	ds_train = Dermatology(cuda=cuda, batch_size=batch_size, testing_mode=testing_mode)  # training dataset
 
-	latent_dim = 1
-	cluster_number = 2
+	latent_dim = 5
+	cluster_number = 6
 	data_shape = ds_train.data_shape
-	# TODO AutoEncoder
-	autoencoder = StackedDenoisingAutoEncoder([data_shape, 10, latent_dim], final_activation=None)
+	# Bigger Network Destroys the clustering results!
+	autoencoder = StackedDenoisingAutoEncoder([data_shape, 60, latent_dim], final_activation=None)
 	
 	if cuda:
 		autoencoder.cuda()
@@ -151,15 +151,15 @@ def main(cuda, batch_size, pretrain_epochs, finetune_epochs, testing_mode):
 	train(
 		dataset=ds_train,
 		model=model,
-		epochs=300,
-		batch_size=batch_size,
+		epochs=150,
+		batch_size=61,
 		optimizer=dec_optimizer,
 		stopping_delta=None,
 		cuda=cuda,
 	)
 
 	predicted, actual = predict(
-		ds_train, model, 1000, silent=True, return_actual=True, cuda=cuda
+		ds_train, model, 366, silent=True, return_actual=True, cuda=cuda
 	)
 
 	actual = actual.cpu().numpy()
@@ -170,6 +170,7 @@ def main(cuda, batch_size, pretrain_epochs, finetune_epochs, testing_mode):
 	nmi = normalized_mutual_info_score(actual, predicted)
 	ari = adjusted_rand_score(actual, predicted)
 	print("Final DEC ACC: {:.2f} PURITY: {:.2f} NMI: {:.2f} ARI: {:.2f}".format(accuracy, purity, nmi, ari))
+
 
 	if not testing_mode:
 		predicted_reassigned = [

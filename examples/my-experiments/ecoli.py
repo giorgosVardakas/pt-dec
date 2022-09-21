@@ -18,7 +18,7 @@ import ptsdae.model as ae
 from ptdec.utils import cluster_accuracy
 from sklearn.metrics import accuracy_score
 from sklearn.metrics.cluster import normalized_mutual_info_score, adjusted_rand_score
-from datasets.datasets import get_rings_dataset
+from datasets.datasets import get_ecoil_dataset
 import pdb
 
 def transform_clusters_to_labels(labels, clusters):
@@ -50,9 +50,9 @@ def transform_clusters_to_labels(labels, clusters):
 
 	return np.array(predicted_labels)
 
-class TwoRings(Dataset):
+class Ecoil(Dataset):
 	def __init__(self, cuda, batch_size, testing_mode=False):
-		self.ds, self.data_shape = get_rings_dataset(batch_size)
+		self.ds, self.data_shape = get_ecoil_dataset(batch_size)
 		self.cuda = cuda
 		self.testing_mode = testing_mode
 		self._cache = dict()
@@ -73,7 +73,7 @@ class TwoRings(Dataset):
 
 @click.option("--cuda", help="whether to use CUDA (default True).", type=bool, default=True)
 
-@click.option("--batch-size", help="training batch size (default 256).", type=int, default=30)
+@click.option("--batch-size", help="training batch size (default 256).", type=int, default=56)
 
 @click.option(
 	"--pretrain-epochs",
@@ -97,20 +97,19 @@ class TwoRings(Dataset):
 )
 
 def main(cuda, batch_size, pretrain_epochs, finetune_epochs, testing_mode):
-	batch_size = 100
 	writer = SummaryWriter()  # create the TensorBoard object
 	# callback function to call during training, uses writer from the scope
 
 	def training_callback(epoch, lr, loss, validation_loss):
 		writer.add_scalars(	"data/autoencoder",	{"lr": lr, "loss": loss, "validation_loss": validation_loss,}, epoch,)
 
-	ds_train = TwoRings(cuda=cuda, batch_size=batch_size, testing_mode=testing_mode)  # training dataset
+	ds_train = Ecoil(cuda=cuda, batch_size=batch_size, testing_mode=testing_mode)  # training dataset
 
-	latent_dim = 1
-	cluster_number = 2
+	latent_dim = 4
+	cluster_number = 8
 	data_shape = ds_train.data_shape
 	# TODO AutoEncoder
-	autoencoder = StackedDenoisingAutoEncoder([data_shape, 10, latent_dim], final_activation=None)
+	autoencoder = StackedDenoisingAutoEncoder([data_shape, 14, latent_dim], final_activation=None)
 	
 	if cuda:
 		autoencoder.cuda()
@@ -151,7 +150,7 @@ def main(cuda, batch_size, pretrain_epochs, finetune_epochs, testing_mode):
 	train(
 		dataset=ds_train,
 		model=model,
-		epochs=300,
+		epochs=50,
 		batch_size=batch_size,
 		optimizer=dec_optimizer,
 		stopping_delta=None,
@@ -159,7 +158,7 @@ def main(cuda, batch_size, pretrain_epochs, finetune_epochs, testing_mode):
 	)
 
 	predicted, actual = predict(
-		ds_train, model, 1000, silent=True, return_actual=True, cuda=cuda
+		ds_train, model, 336, silent=True, return_actual=True, cuda=cuda
 	)
 
 	actual = actual.cpu().numpy()
