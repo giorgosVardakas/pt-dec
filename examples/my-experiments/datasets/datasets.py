@@ -10,7 +10,7 @@ import pandas as pd
 import scipy.sparse
 import scipy.io
 from sklearn.preprocessing import MinMaxScaler, LabelEncoder
-from sklearn.datasets import fetch_20newsgroups, make_circles, make_moons, fetch_olivetti_faces
+from sklearn.datasets import fetch_20newsgroups, make_circles, make_moons, fetch_olivetti_faces, make_blobs
 from sklearn.feature_extraction.text import TfidfVectorizer
 #from datapackage import Package
 import pdb
@@ -77,6 +77,26 @@ def get_wine_np():
 
 def get_wine_dataset(batch_size=89):
 	data, labels = get_wine_np()
+
+	# Convert to tensor dataset
+	data = torch.Tensor(data)
+	data_shape = data.shape[1]
+	labels = torch.Tensor(labels)
+	final_dataset = TensorDataset(data, labels)
+
+	return final_dataset, data_shape
+
+def get_four_guassian_np():
+	data, labels = make_blobs(centers=[(0, 0), (0, 10), (10, 0), (10, 10)], n_samples=1_000)
+	label_enc = LabelEncoder()
+	labels = label_enc.fit_transform(labels)
+	scaler = MinMaxScaler()
+	data = scaler.fit_transform(data)
+
+	return data, labels
+
+def get_four_guassian_dataloader(batch_size=200):
+	data, labels = get_four_guassian_np()
 
 	# Convert to tensor dataset
 	data = torch.Tensor(data)
