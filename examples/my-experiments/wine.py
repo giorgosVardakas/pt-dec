@@ -19,36 +19,8 @@ from ptdec.utils import cluster_accuracy
 from sklearn.metrics import accuracy_score
 from sklearn.metrics.cluster import normalized_mutual_info_score, adjusted_rand_score
 from datasets.datasets import get_wine_dataset
+from evaluation import Evaluator
 import pdb
-
-def transform_clusters_to_labels(labels, clusters):
-	"""
-	Transforms clusters assigments to ground truth categories based on a greedy
-	approach. Every cluster is transposed to the most frequent ground truth label.
-	"""
-	predicted_labels = list()
-
-	# Find the cluster ids (labels)
-	c_ids = np.unique(clusters)
-	labels = labels
-
-	# Dictionary to transform cluster label to real label
-	dict_clusters_to_labels = dict()
-
-	# For every cluster find the most frequent data label
-	for c_id in c_ids:
-		indexes_of_cluster_i = np.where(c_id == clusters)
-		elements, frequency = np.unique(labels[indexes_of_cluster_i], return_counts=True)
-		true_label_index = np.argmax(frequency)
-		true_label = elements[true_label_index]
-		dict_clusters_to_labels[c_id] = true_label
-
-	# Change the cluster labels to real labels
-	for i, element in enumerate(clusters):
-		cluster_of_element_i = dict_clusters_to_labels[element]
-		predicted_labels.append(cluster_of_element_i)
-
-	return np.array(predicted_labels)
 
 class Wine(Dataset):
 	def __init__(self, cuda, batch_size, testing_mode=False):
@@ -162,14 +134,22 @@ def main(cuda, batch_size, pretrain_epochs, finetune_epochs, testing_mode):
 		ds_train, model, 178, silent=True, return_actual=True, cuda=cuda
 	)
 
+	
+
 	actual = actual.cpu().numpy()
 	predicted = predicted.cpu().numpy()
+
+	evaluator = Evaluator()
+	evaluator.evaluate_clustering(actual, predicted)
+	evaluator.print_evaluation()
+
 	reassignment, accuracy = cluster_accuracy(actual, predicted)
-	greedy_pred_labels = transform_clusters_to_labels(actual, predicted)
-	purity = accuracy_score(actual, greedy_pred_labels)
-	nmi = normalized_mutual_info_score(actual, predicted)
-	ari = adjusted_rand_score(actual, predicted)
-	print("Final DEC ACC: {:.2f} PURITY: {:.2f} NMI: {:.2f} ARI: {:.2f}".format(accuracy, purity, nmi, ari))
+	#greedy_pred_labels = transform_clusters_to_labels(actual, predicted)
+	#purity = accuracy_score(actual, greedy_pred_labels)
+	#nmi = normalized_mutual_info_score(actual, predicted)
+	#ari = adjusted_rand_score(actual, predicted)
+
+	#print("Final DEC ACC: {:.2f} PURITY: {:.2f} NMI: {:.2f} ARI: {:.2f}".format(accuracy, purity, nmi, ari))
 
 	if not testing_mode:
 		predicted_reassigned = [
